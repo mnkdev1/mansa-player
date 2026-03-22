@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Mansa Podcaster — Ma Bibliothèque</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#0d0d12; --panel:#13131a; --border:#252535;
+  --accent:#7c6fff; --success:#3dd9a4; --warn:#ffb347;
+  --text:#ddddf0; --dim:#55556a; --entry:#1e1e2c; --r:10px;
+}
+body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; padding-bottom:130px; }
+
+.header { background:linear-gradient(135deg,#13131a 0%,#1a1a2e 100%); border-bottom:1px solid var(--border); padding:16px 20px; position:sticky; top:0; z-index:100; display:flex; align-items:center; gap:12px; }
+.header-logo { font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:700; color:var(--accent); }
+.header-sub { font-size:11px; color:var(--dim); font-family:'JetBrains Mono',monospace; }
+.header-right { margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); text-align:right; }
+
+.search-bar { padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--border); }
+.search-input { width:100%; background:var(--entry); border:1px solid var(--border); border-radius:var(--r); color:var(--text); padding:10px 14px; font-family:'Inter',sans-serif; font-size:14px; outline:none; transition:border-color .15s; }
+.search-input:focus { border-color:var(--accent); }
+
+.library { padding:16px 20px; max-width:860px; margin:0 auto; }
+.library-title { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--accent); letter-spacing:.14em; text-transform:uppercase; margin-bottom:12px; }
+
+.track-card { background:var(--panel); border:1px solid var(--border); border-radius:var(--r); margin-bottom:10px; overflow:hidden; transition:border-color .15s; cursor:pointer; }
+.track-card:hover { border-color:#3a3a5a; }
+.track-card.active { border-color:var(--accent); }
+.track-header { display:flex; align-items:center; gap:12px; padding:14px 16px; }
+.track-play-btn { width:38px; height:38px; border-radius:50%; background:var(--accent); border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; color:#fff; flex-shrink:0; transition:transform .15s,filter .15s; }
+.track-play-btn:hover { transform:scale(1.1); filter:brightness(1.15); }
+.track-play-btn.playing { background:var(--success); color:#000; }
+.track-info { flex:1; min-width:0; }
+.track-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:3px; }
+.track-meta { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); display:flex; gap:10px; flex-wrap:wrap; }
+.resume-tag { color:var(--warn) !important; }
+.track-progress-mini { width:80px; height:3px; background:var(--entry); border-radius:2px; overflow:hidden; }
+.track-progress-mini-fill { height:100%; background:var(--accent); border-radius:2px; transition:width .3s; }
+.track-expand-btn { background:transparent; border:none; color:var(--dim); cursor:pointer; font-size:12px; padding:4px 8px; transition:color .15s; }
+.track-expand-btn:hover { color:var(--text); }
+
+.chapters-panel { border-top:1px solid var(--border); background:#0f0f18; display:none; }
+.chapters-panel.open { display:block; }
+.chapters-title { font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dim); letter-spacing:.12em; text-transform:uppercase; padding:8px 16px 4px; }
+.chapter-item { display:flex; align-items:center; gap:10px; padding:8px 16px; cursor:pointer; transition:background .12s; border-bottom:1px solid #1a1a28; }
+.chapter-item:last-child { border-bottom:none; }
+.chapter-item:hover { background:#1a1a2e; }
+.chapter-item.active { background:#18182e; }
+.chapter-num { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); width:24px; flex-shrink:0; }
+.chapter-title { flex:1; font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chapter-item.active .chapter-title { color:var(--accent); }
+.chapter-time { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); flex-shrink:0; }
+.chapter-dot { width:6px; height:6px; border-radius:50%; background:var(--border); flex-shrink:0; }
+.chapter-item.active .chapter-dot { background:var(--accent); }
+.chapter-item.done .chapter-dot { background:var(--success); }
+
+.player-bar { position:fixed; bottom:0; left:0; right:0; background:#0a0a12; border-top:1px solid var(--border); z-index:200; padding:10px 20px 14px; }
+.player-now-playing { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); margin-bottom:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.player-now-playing span { color:var(--accent); }
+.player-controls { display:flex; align-items:center; gap:12px; }
+.ctrl-btn { background:transparent; border:none; color:var(--dim); cursor:pointer; font-size:18px; padding:4px; transition:color .15s,transform .1s; flex-shrink:0; }
+.ctrl-btn:hover { color:var(--text); transform:scale(1.1); }
+.ctrl-btn.main { width:42px; height:42px; border-radius:50%; background:var(--accent); color:#fff; font-size:16px; display:flex; align-items:center; justify-content:center; }
+.ctrl-btn.main:hover { filter:brightness(1.15); transform:scale(1.05); }
+.progress-wrap { flex:1; }
+.progress-track { width:100%; height:4px; background:var(--entry); border-radius:3px; cursor:pointer; position:relative; overflow:hidden; margin-bottom:4px; }
+.progress-fill { height:100%; background:var(--accent); border-radius:3px; pointer-events:none; transition:width .1s linear; }
+.chapter-markers { position:absolute; top:0; left:0; right:0; bottom:0; pointer-events:none; }
+.chapter-marker { position:absolute; top:0; bottom:0; width:2px; background:rgba(255,255,255,0.2); }
+.time-row { display:flex; justify-content:space-between; font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dim); }
+.speed-btn { font-family:'JetBrains Mono',monospace; font-size:10px; background:var(--entry); border:1px solid var(--border); color:var(--text); border-radius:4px; padding:4px 8px; cursor:pointer; flex-shrink:0; transition:border-color .15s; }
+.speed-btn:hover { border-color:var(--accent); }
+
+.loading { text-align:center; padding:60px 20px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--dim); }
+.spinner { font-size:28px; display:block; margin-bottom:12px; animation:spin 1.5s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.setup-box { background:var(--panel); border:1px solid var(--accent); border-radius:var(--r); padding:20px; margin:20px; }
+.setup-box h3 { font-family:'JetBrains Mono',monospace; color:var(--accent); margin-bottom:12px; }
+.setup-box p { font-size:12px; color:var(--dim); line-height:1.7; margin-bottom:8px; }
+.setup-box code { background:var(--entry); padding:2px 6px; border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--success); }
+
+@media (max-width:600px) {
+  .header { padding:12px 14px; }
+  .library { padding:12px 14px; }
+  .player-bar { padding:8px 14px 12px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-logo">🎧 Mansa Podcaster</div>
+    <div class="header-sub" id="folder-name">Podcast EEA Certif 2026</div>
+  </div>
+  <div class="header-right" id="header-info">Chargement…</div>
+</div>
+
+<div class="search-bar">
+  <input class="search-input" type="text" id="search-input"
+         placeholder="🔍  Rechercher un podcast…"
+         oninput="filterTracks()">
+</div>
+
+<div class="library">
+  <div class="library-title">Podcasts</div>
+  <div id="track-list">
+    <div class="loading"><span class="spinner">⟳</span>Chargement…</div>
+  </div>
+</div>
+
+<div class="player-bar">
+  <div class="player-now-playing" id="now-playing">Aucun podcast sélectionné</div>
+  <div class="player-controls">
+    <button class="ctrl-btn" onclick="skipChapter(-1)" title="Chapitre précédent">⏮</button>
+    <button class="ctrl-btn" onclick="seek(-15)" title="-15s">↺</button>
+    <button class="ctrl-btn main" id="play-btn" onclick="togglePlay()">▶</button>
+    <button class="ctrl-btn" onclick="seek(15)" title="+15s">↻</button>
+    <button class="ctrl-btn" onclick="skipChapter(1)" title="Chapitre suivant">⏭</button>
+    <div class="progress-wrap">
+      <div class="progress-track" id="progress-track" onclick="seekTo(event)">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+        <div class="chapter-markers" id="chapter-markers"></div>
+      </div>
+      <div class="time-row">
+        <span id="time-cur">0:00</span>
+        <span id="time-dur">0:00</span>
+      </div>
+    </div>
+    <button class="speed-btn" id="speed-btn" onclick="cycleSpeed()">1.0x</button>
+  </div>
+</div>
+
+<audio id="audio" preload="metadata"></audio>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  ⚙️ CONFIGURATION — Une seule ligne à renseigner
+// ═══════════════════════════════════════════════════════
+// Après le premier upload depuis Mansa Podcaster,
+// récupérez l'ID de index.json affiché dans le message
+// de confirmation, et collez-le ici :
+const INDEX_FILE_ID = "";  // ← ex: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs"
+
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+let tracks       = [];
+let currentTrack = null;
+let chapters     = [];
+let speeds       = [0.75, 0.85, 1.0, 1.1, 1.25];
+let speedIdx     = 2;
+const audio      = document.getElementById("audio");
+const STORAGE    = "mansa_progress";
+
+// ═══════════════════════════════════════════════════════
+//  STORAGE
+// ═══════════════════════════════════════════════════════
+function saveProgress(id, time) {
+  const d = JSON.parse(localStorage.getItem(STORAGE)||"{}");
+  d[id]   = { time, ts: Date.now() };
+  localStorage.setItem(STORAGE, JSON.stringify(d));
+}
+function getProgress(id) {
+  const d = JSON.parse(localStorage.getItem(STORAGE)||"{}");
+  return d[id]?.time || 0;
+}
+
+// ═══════════════════════════════════════════════════════
+//  CHARGEMENT index.json
+// ═══════════════════════════════════════════════════════
+async function loadLibrary() {
+  const list = document.getElementById("track-list");
+
+  if (!INDEX_FILE_ID) {
+    list.innerHTML = `
+      <div class="setup-box">
+        <h3>⚙️ Configuration requise</h3>
+        <p>Pour afficher votre bibliothèque :</p>
+        <p>1. Générez un podcast avec <strong>Mansa Podcaster</strong></p>
+        <p>2. Activez l'upload Drive dans Paramètres</p>
+        <p>3. Après génération, copiez l'ID affiché dans le message</p>
+        <p>4. Collez-le dans ce fichier à la ligne :</p>
+        <p><code>const INDEX_FILE_ID = "VOTRE_ID_ICI";</code></p>
+        <p>5. Uploadez ce fichier sur GitHub Pages</p>
+      </div>`;
+    document.getElementById("header-info").textContent = "Non configuré";
+    return;
+  }
+
+  try {
+    const url  = `https://drive.google.com/uc?export=download&id=${INDEX_FILE_ID}`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    // Met à jour le header
+    if (data.folder)
+      document.getElementById("folder-name").textContent = data.folder;
+    if (data.updated)
+      document.getElementById("header-info").textContent =
+        `Mis à jour ${data.updated}`;
+
+    // Charge les chapitres pour chaque track
+    tracks = [];
+    for (const t of (data.tracks || [])) {
+      const track = {
+        id:       t.mp3_id,
+        title:    t.title,
+        mp3_url:  `https://drive.google.com/uc?export=download&id=${t.mp3_id}`,
+        chapters: [],
+        duration: 0,
+        added:    t.added || "",
+      };
+      if (t.json_id) {
+        try {
+          const jr = await fetch(
+            `https://drive.google.com/uc?export=download&id=${t.json_id}`);
+          const jd = await jr.json();
+          track.chapters = jd.chapters || [];
+          track.duration = jd.duration || 0;
+        } catch(e) { console.warn("JSON non chargé:", t.title, e); }
+      }
+      tracks.push(track);
+    }
+    renderLibrary(tracks);
+    document.getElementById("header-info").textContent =
+      `${tracks.length} podcast${tracks.length>1?"s":""} · ${data.updated||""}`;
+
+  } catch(e) {
+    list.innerHTML = `
+      <div class="setup-box">
+        <h3>❌ Erreur de chargement</h3>
+        <p>${e.message}</p>
+        <p>Vérifiez que l'ID <code>${INDEX_FILE_ID}</code> est correct
+           et que le fichier est public sur Drive.</p>
+      </div>`;
+    document.getElementById("header-info").textContent = "Erreur";
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  RENDU
+// ═══════════════════════════════════════════════════════
+function renderLibrary(list) {
+  const container = document.getElementById("track-list");
+  if (!list.length) {
+    container.innerHTML = `<div class="loading">Aucun podcast trouvé.</div>`;
+    return;
+  }
+  container.innerHTML = list.map(track => {
+    const saved   = getProgress(track.id);
+    const pct     = track.duration > 0
+      ? Math.round((saved/track.duration)*100) : 0;
+    const hasResume = saved > 5;
+    return `
+    <div class="track-card" id="card-${track.id}"
+         onclick="selectTrack('${track.id}')">
+      <div class="track-header">
+        <button class="track-play-btn" id="playbtn-${track.id}"
+                onclick="event.stopPropagation();playTrack('${track.id}')">▶</button>
+        <div class="track-info">
+          <div class="track-name">${esc(track.title)}</div>
+          <div class="track-meta">
+            <span>${track.chapters.length} chapitres</span>
+            ${track.duration>0?`<span>${fmt(track.duration)}</span>`:""}
+            ${hasResume?`<span class="resume-tag">⏱ Reprendre à ${fmt(saved)}</span>`:""}
+            ${track.added?`<span>${track.added}</span>`:""}
+          </div>
+          ${pct>0?`<div class="track-progress-mini" style="margin-top:5px">
+            <div class="track-progress-mini-fill" style="width:${pct}%"></div>
+          </div>`:""}
+        </div>
+        ${track.chapters.length>0?`
+        <button class="track-expand-btn"
+                id="expand-${track.id}"
+                onclick="event.stopPropagation();toggleChapters('${track.id}')">📋
+        </button>`:""}
+      </div>
+      ${track.chapters.length>0?`
+      <div class="chapters-panel" id="chapters-${track.id}">
+        <div class="chapters-title">Chapitres</div>
+        ${track.chapters.map((ch,ci)=>`
+          <div class="chapter-item" id="ch-${track.id}-${ci}"
+               onclick="event.stopPropagation();playChapter('${track.id}',${ci})">
+            <div class="chapter-num">${String(ci+1).padStart(2,"0")}</div>
+            <div class="chapter-dot"></div>
+            <div class="chapter-title">${esc(ch.title)}</div>
+            <div class="chapter-time">${fmt(ch.start)}</div>
+          </div>`).join("")}
+      </div>`:""}
+    </div>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════════════════
+//  LECTURE
+// ═══════════════════════════════════════════════════════
+function selectTrack(id) {
+  const track = tracks.find(t=>t.id===id);
+  if (!track) return;
+  document.querySelectorAll(".track-card").forEach(c=>c.classList.remove("active"));
+  document.getElementById(`card-${id}`)?.classList.add("active");
+  if (currentTrack?.id===id) return;
+  currentTrack = track;
+  chapters     = track.chapters||[];
+  audio.src    = track.mp3_url;
+  audio.load();
+  const saved  = getProgress(id);
+  if (saved>5) {
+    audio.addEventListener("loadedmetadata",()=>{
+      audio.currentTime = saved;
+    },{once:true});
+  }
+  document.getElementById("now-playing").innerHTML =
+    `🎧 <span>${esc(track.title)}</span>`;
+  renderChapterMarkers();
+  audio.play().catch(console.warn);
+}
+
+function playTrack(id) {
+  if (currentTrack?.id===id) togglePlay();
+  else selectTrack(id);
+}
+
+function playChapter(id, ci) {
+  const track = tracks.find(t=>t.id===id);
+  if (!track) return;
+  if (currentTrack?.id!==id) {
+    selectTrack(id);
+    audio.addEventListener("loadedmetadata",()=>{
+      audio.currentTime = track.chapters[ci].start;
+      audio.play();
+    },{once:true});
+  } else {
+    audio.currentTime = track.chapters[ci].start;
+    audio.play();
+  }
+}
+
+function togglePlay() {
+  if (!currentTrack) return;
+  audio.paused ? audio.play() : audio.pause();
+}
+
+function seek(s) {
+  audio.currentTime = Math.max(0,Math.min(audio.duration||0,audio.currentTime+s));
+}
+
+function seekTo(e) {
+  const r = document.getElementById("progress-track").getBoundingClientRect();
+  audio.currentTime = ((e.clientX-r.left)/r.width)*(audio.duration||0);
+}
+
+function skipChapter(dir) {
+  if (!chapters.length) { seek(dir*30); return; }
+  const cur = audio.currentTime;
+  if (dir>0) {
+    const n = chapters.find(c=>c.start>cur+1);
+    if (n) audio.currentTime = n.start;
+  } else {
+    const p = [...chapters].reverse().find(c=>c.start<cur-2);
+    if (p) audio.currentTime = p.start;
+    else   audio.currentTime = 0;
+  }
+}
+
+function cycleSpeed() {
+  speedIdx = (speedIdx+1)%speeds.length;
+  const s  = speeds[speedIdx];
+  audio.playbackRate = s;
+  document.getElementById("speed-btn").textContent = `${s}x`;
+}
+
+// ═══════════════════════════════════════════════════════
+//  AUDIO EVENTS
+// ═══════════════════════════════════════════════════════
+audio.addEventListener("timeupdate",()=>{
+  if (!audio.duration) return;
+  const pct = (audio.currentTime/audio.duration)*100;
+  document.getElementById("progress-fill").style.width = pct+"%";
+  document.getElementById("time-cur").textContent = fmt(audio.currentTime);
+  document.getElementById("time-dur").textContent = fmt(audio.duration);
+  if (currentTrack && Math.round(audio.currentTime)%5===0) {
+    saveProgress(currentTrack.id, audio.currentTime);
+    const mini = document.querySelector(`#card-${currentTrack.id} .track-progress-mini-fill`);
+    if (mini) mini.style.width = pct+"%";
+  }
+  updateActiveChapter();
+});
+
+audio.addEventListener("play",()=>{
+  document.getElementById("play-btn").textContent="⏸";
+  if (currentTrack) {
+    const b = document.getElementById(`playbtn-${currentTrack.id}`);
+    if (b) { b.textContent="⏸"; b.classList.add("playing"); }
+  }
+});
+audio.addEventListener("pause",()=>{
+  document.getElementById("play-btn").textContent="▶";
+  if (currentTrack) {
+    const b = document.getElementById(`playbtn-${currentTrack.id}`);
+    if (b) { b.textContent="▶"; b.classList.remove("playing"); }
+  }
+});
+audio.addEventListener("ended",()=>{
+  if (currentTrack) saveProgress(currentTrack.id,0);
+});
+
+// ═══════════════════════════════════════════════════════
+//  CHAPITRES UI
+// ═══════════════════════════════════════════════════════
+function toggleChapters(id) {
+  const p = document.getElementById(`chapters-${id}`);
+  const b = document.getElementById(`expand-${id}`);
+  if (!p) return;
+  const o = p.classList.toggle("open");
+  if (b) b.textContent = o?"🔼":"📋";
+}
+
+function renderChapterMarkers() {
+  const c = document.getElementById("chapter-markers");
+  c.innerHTML = "";
+  if (!chapters.length) return;
+  const render = () => {
+    if (!audio.duration) return;
+    chapters.forEach(ch=>{
+      const pct = (ch.start/(audio.duration||1))*100;
+      const m   = document.createElement("div");
+      m.className = "chapter-marker";
+      m.style.left = pct+"%";
+      c.appendChild(m);
+    });
+  };
+  audio.duration ? render()
+    : audio.addEventListener("loadedmetadata",render,{once:true});
+}
+
+function updateActiveChapter() {
+  if (!currentTrack||!chapters.length) return;
+  const cur = audio.currentTime;
+  const rev = [...chapters].reverse();
+  const ai  = rev.findIndex(c=>c.start<=cur);
+  const idx = ai===-1 ? 0 : chapters.length-1-ai;
+  chapters.forEach((_,ci)=>{
+    const el = document.getElementById(`ch-${currentTrack.id}-${ci}`);
+    if (!el) return;
+    el.classList.remove("active","done");
+    if (ci===idx) el.classList.add("active");
+    if (ci<idx)   el.classList.add("done");
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  RECHERCHE
+// ═══════════════════════════════════════════════════════
+function filterTracks() {
+  const q = document.getElementById("search-input").value.toLowerCase().trim();
+  renderLibrary(q ? tracks.filter(t=>t.title.toLowerCase().includes(q)) : tracks);
+}
+
+// ═══════════════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════════════
+function fmt(s) {
+  if (!s||isNaN(s)) return "0:00";
+  const m = Math.floor(s/60), sec = Math.floor(s%60);
+  return `${m}:${String(sec).padStart(2,"0")}`;
+}
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
+loadLibrary();
+</script>
+</body>
+</html>
