@@ -141,10 +141,15 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
 // ═══════════════════════════════════════════════════════
 //  ⚙️ CONFIGURATION — Une seule ligne à renseigner
 // ═══════════════════════════════════════════════════════
-// Après le premier upload depuis Mansa Podcaster,
-// récupérez l'ID de index.json affiché dans le message
-// de confirmation, et collez-le ici :
 const INDEX_FILE_ID = "1rwaK0wtMba7CL0Mv7gwbunTXn6IDOKi7";
+const API_KEY       = "AIzaSyCuf2U91tVBOopujlfwWuFNnc7b8VVI_uI";
+
+function driveJson(id) {
+  return `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${API_KEY}`;
+}
+function driveAudio(id) {
+  return `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${API_KEY}`;
+}
 
 // ═══════════════════════════════════════════════════════
 //  STATE
@@ -193,33 +198,30 @@ async function loadLibrary() {
   }
 
   try {
-    const url  = `https://drive.google.com/uc?export=download&id=${INDEX_FILE_ID}`;
-    const res  = await fetch(url);
+    const res  = await fetch(driveJson(INDEX_FILE_ID));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    // Met à jour le header
     if (data.folder)
       document.getElementById("folder-name").textContent = data.folder;
     if (data.updated)
       document.getElementById("header-info").textContent =
         `Mis à jour ${data.updated}`;
 
-    // Charge les chapitres pour chaque track
     tracks = [];
     for (const t of (data.tracks || [])) {
       const track = {
         id:       t.mp3_id,
         title:    t.title,
-        mp3_url:  `https://drive.google.com/uc?export=download&id=${t.mp3_id}`,
+        mp3_url:  driveAudio(t.mp3_id),
         chapters: [],
         duration: 0,
         added:    t.added || "",
       };
       if (t.json_id) {
         try {
-          const jr = await fetch(
-            `https://drive.google.com/uc?export=download&id=${t.json_id}`);
+          const jr = await fetch(driveJson(t.json_id));
+          if (!jr.ok) throw new Error(`HTTP ${jr.status}`);
           const jd = await jr.json();
           track.chapters = jd.chapters || [];
           track.duration = jd.duration || 0;
