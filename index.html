@@ -73,6 +73,14 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
 .time-row { display:flex; justify-content:space-between; font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dim); }
 .speed-btn { font-family:'JetBrains Mono',monospace; font-size:10px; background:var(--entry); border:1px solid var(--border); color:var(--text); border-radius:4px; padding:4px 8px; cursor:pointer; flex-shrink:0; transition:border-color .15s; }
 .speed-btn:hover { border-color:var(--accent); }
+.ctrl-btn.small { font-family:'JetBrains Mono',monospace; font-size:10px; background:var(--entry); border:1px solid var(--border); color:var(--dim); border-radius:4px; padding:4px 7px; cursor:pointer; flex-shrink:0; transition:all .15s; font-size:11px; }
+.ctrl-btn.small:hover { border-color:var(--accent); color:var(--text); }
+.loop-zone { position:absolute; top:0; bottom:0; background:rgba(124,111,255,0.25); pointer-events:none; border-left:2px solid var(--accent); border-right:2px solid var(--accent); }
+.loop-controls { display:flex; gap:4px; flex-shrink:0; }
+.loop-btn { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; background:var(--entry); border:1px solid var(--border); color:var(--dim); border-radius:4px; padding:4px 8px; cursor:pointer; transition:all .15s; }
+.loop-btn:hover { border-color:var(--accent); color:var(--text); }
+.loop-btn.set { border-color:var(--accent); color:var(--accent); }
+.loop-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
 
 .loading { text-align:center; padding:60px 20px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--dim); }
 .spinner { font-size:28px; display:block; margin-bottom:12px; animation:spin 1.5s linear infinite; }
@@ -117,20 +125,32 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
   <div class="player-now-playing" id="now-playing">Aucun podcast sélectionné</div>
   <div class="player-controls">
     <button class="ctrl-btn" onclick="skipChapter(-1)" title="Chapitre précédent">⏮</button>
-    <button class="ctrl-btn" onclick="seek(-15)" title="-15s">↺</button>
+    <button class="ctrl-btn small" onclick="seek(-10)" title="-10s">-10</button>
+    <button class="ctrl-btn small" onclick="seek(-5)" title="-5s">-5</button>
     <button class="ctrl-btn main" id="play-btn" onclick="togglePlay()">▶</button>
-    <button class="ctrl-btn" onclick="seek(15)" title="+15s">↻</button>
+    <button class="ctrl-btn small" onclick="seek(5)" title="+5s">+5</button>
+    <button class="ctrl-btn small" onclick="seek(10)" title="+10s">+10</button>
     <button class="ctrl-btn" onclick="skipChapter(1)" title="Chapitre suivant">⏭</button>
+
     <div class="progress-wrap">
       <div class="progress-track" id="progress-track" onclick="seekTo(event)">
         <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+        <div class="loop-zone" id="loop-zone" style="display:none"></div>
         <div class="chapter-markers" id="chapter-markers"></div>
       </div>
       <div class="time-row">
         <span id="time-cur">0:00</span>
+        <span id="loop-info" style="font-size:9px; color:var(--accent);"></span>
         <span id="time-dur">0:00</span>
       </div>
     </div>
+
+    <div class="loop-controls">
+      <button class="loop-btn" id="btn-a" onclick="setLoopA()" title="Marquer début boucle">A</button>
+      <button class="loop-btn" id="btn-b" onclick="setLoopB()" title="Marquer fin boucle">B</button>
+      <button class="loop-btn" id="btn-loop" onclick="toggleLoop()" title="Activer/désactiver boucle">↻</button>
+    </div>
+
     <button class="speed-btn" id="speed-btn" onclick="cycleSpeed()">1.0x</button>
   </div>
 </div>
@@ -141,7 +161,7 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
 // ═══════════════════════════════════════════════════════
 //  ⚙️ CONFIGURATION — Une seule ligne à renseigner
 // ═══════════════════════════════════════════════════════
-const INDEX_FILE_ID = "1EYJ6Jq3VAny05aqR-CP5CZ3e_cjiOfCl";
+const INDEX_FILE_ID = "1rwaK0wtMba7CL0Mv7gwbunTXn6IDOKi7";
 const API_KEY       = "AIzaSyCuf2U91tVBOopujlfwWuFNnc7b8VVI_uI";
 
 function driveJson(id) {
@@ -161,6 +181,11 @@ let speeds       = [0.75, 0.85, 1.0, 1.1, 1.25];
 let speedIdx     = 2;
 const audio      = document.getElementById("audio");
 const STORAGE    = "mansa_progress";
+
+// Loop A-B
+let loopA      = null;
+let loopB      = null;
+let loopActive = false;
 
 // ═══════════════════════════════════════════════════════
 //  STORAGE
@@ -320,6 +345,7 @@ function selectTrack(id) {
   }
   document.getElementById("now-playing").innerHTML =
     `🎧 <span>${esc(track.title)}</span>`;
+  resetLoop();
   renderChapterMarkers();
   audio.play().catch(console.warn);
 }
@@ -371,6 +397,72 @@ function skipChapter(dir) {
   }
 }
 
+function setLoopA() {
+  loopA = audio.currentTime;
+  document.getElementById("btn-a").classList.add("set");
+  updateLoopZone();
+  updateLoopInfo();
+}
+
+function setLoopB() {
+  loopB = audio.currentTime;
+  document.getElementById("btn-b").classList.add("set");
+  updateLoopZone();
+  updateLoopInfo();
+}
+
+function toggleLoop() {
+  if (loopA === null || loopB === null) return;
+  if (loopA >= loopB) {
+    // Échange si A > B
+    [loopA, loopB] = [loopB, loopA];
+  }
+  loopActive = !loopActive;
+  const btn = document.getElementById("btn-loop");
+  btn.classList.toggle("active", loopActive);
+  if (loopActive) audio.currentTime = loopA;
+  updateLoopInfo();
+}
+
+function resetLoop() {
+  loopA = null; loopB = null; loopActive = false;
+  document.getElementById("btn-a").classList.remove("set");
+  document.getElementById("btn-b").classList.remove("set");
+  document.getElementById("btn-loop").classList.remove("active");
+  document.getElementById("loop-zone").style.display = "none";
+  document.getElementById("loop-info").textContent = "";
+}
+
+function updateLoopZone() {
+  const zone = document.getElementById("loop-zone");
+  if (loopA === null || loopB === null || !audio.duration) {
+    zone.style.display = "none"; return;
+  }
+  const a   = Math.min(loopA, loopB);
+  const b   = Math.max(loopA, loopB);
+  const dur = audio.duration;
+  zone.style.display = "block";
+  zone.style.left    = (a / dur * 100) + "%";
+  zone.style.width   = ((b - a) / dur * 100) + "%";
+}
+
+function updateLoopInfo() {
+  const el = document.getElementById("loop-info");
+  if (loopA !== null && loopB !== null) {
+    const a = Math.min(loopA, loopB);
+    const b = Math.max(loopA, loopB);
+    el.textContent = loopActive
+      ? `↻ ${fmt(a)} → ${fmt(b)}`
+      : `A:${fmt(a)}  B:${fmt(b)}`;
+    el.style.color = loopActive ? "var(--success)" : "var(--accent)";
+  } else if (loopA !== null) {
+    el.textContent = `A:${fmt(loopA)}`;
+    el.style.color = "var(--accent)";
+  } else {
+    el.textContent = "";
+  }
+}
+
 function cycleSpeed() {
   speedIdx = (speedIdx+1)%speeds.length;
   const s  = speeds[speedIdx];
@@ -387,12 +479,23 @@ audio.addEventListener("timeupdate",()=>{
   document.getElementById("progress-fill").style.width = pct+"%";
   document.getElementById("time-cur").textContent = fmt(audio.currentTime);
   document.getElementById("time-dur").textContent = fmt(audio.duration);
+
+  // Vérification boucle A-B
+  if (loopActive && loopA !== null && loopB !== null) {
+    const a = Math.min(loopA, loopB);
+    const b = Math.max(loopA, loopB);
+    if (audio.currentTime >= b) {
+      audio.currentTime = a;
+    }
+  }
+
   if (currentTrack && Math.round(audio.currentTime)%5===0) {
     saveProgress(currentTrack.id, audio.currentTime);
     const mini = document.querySelector(`#card-${currentTrack.id} .track-progress-mini-fill`);
     if (mini) mini.style.width = pct+"%";
   }
   updateActiveChapter();
+  updateLoopZone();
 });
 
 audio.addEventListener("play",()=>{
