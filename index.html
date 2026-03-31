@@ -182,10 +182,6 @@ const INDEX_FILE_ID = "1EYJ6Jq3VAny05aqR-CP5CZ3e_cjiOfCl";
 const API_KEY       = "AIzaSyCuf2U91tVBOopujlfwWuFNnc7b8VVI_uI";
 const HIDDEN_KEY    = "mansa_hidden_tracks";
 
-function driveJson(id) {
-  return `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${API_KEY}`;
-}
-
 // ── Gestion des podcasts masqués ──────────────────────────────
 function getHidden() {
   return JSON.parse(localStorage.getItem(HIDDEN_KEY)||"[]");
@@ -196,32 +192,6 @@ function toggleHidden(id) {
   const i = h.indexOf(id);
   if (i===-1) h.push(id); else h.splice(i,1);
   localStorage.setItem(HIDDEN_KEY, JSON.stringify(h));
-}
-function toggleManagePanel() {
-  const p = document.getElementById("manage-panel");
-  p.classList.toggle("open");
-  if (p.classList.contains("open")) renderManagePanel();
-}
-function renderManagePanel() {
-  const list = document.getElementById("manage-list");
-  if (!tracks.length) {
-    list.innerHTML=`<div style="font-size:12px;color:var(--dim)">Aucun podcast.</div>`;
-    return;
-  }
-  list.innerHTML = tracks.map(t => {
-    const h = isHidden(t.id);
-    return `<div class="manage-item">
-      <span class="manage-item-name ${h?'hidden':''}">${esc(t.title)}</span>
-      <button class="toggle-btn ${h?'hidden':'visible'}"
-              onclick="toggleTrackVisibility('${t.id}')">
-        ${h?'👁 Afficher':'🚫 Masquer'}
-      </button></div>`;
-  }).join("");
-}
-function toggleTrackVisibility(id) {
-  toggleHidden(id);
-  renderManagePanel();
-  filterTracks();
 }
 
 function driveJson(id) {
@@ -258,22 +228,6 @@ function saveProgress(id, time) {
 function getProgress(id) {
   const d = JSON.parse(localStorage.getItem(STORAGE)||"{}");
   return d[id]?.time || 0;
-}
-
-// ── Podcasts masqués ──────────────────────────────────
-const HIDDEN_KEY = "mansa_hidden";
-function getHidden() {
-  return JSON.parse(localStorage.getItem(HIDDEN_KEY)||"[]");
-}
-function setHidden(arr) {
-  localStorage.setItem(HIDDEN_KEY, JSON.stringify(arr));
-}
-function isHidden(id) { return getHidden().includes(id); }
-function toggleHidden(id) {
-  const h = getHidden();
-  const i = h.indexOf(id);
-  if (i === -1) h.push(id); else h.splice(i,1);
-  setHidden(h);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -503,11 +457,6 @@ function playChapter(id, ci) {
 function togglePlay() {
   if (!currentTrack) return;
   audio.paused ? audio.play() : audio.pause();
-}
-
-function seekToTime(t) {
-  audio.currentTime = t;
-  if (audio.paused) audio.play();
 }
 
 function seek(s) {
