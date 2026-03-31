@@ -223,6 +223,9 @@ function toggleTrackVisibility(id) {
   renderManagePanel();
   filterTracks();
 }
+
+function driveJson(id) {
+  return `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${API_KEY}`;
 }
 function driveAudio(id) {
   return `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${API_KEY}`;
