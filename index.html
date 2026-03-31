@@ -91,6 +91,17 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
 .setup-box p { font-size:12px; color:var(--dim); line-height:1.7; margin-bottom:8px; }
 .setup-box code { background:var(--entry); padding:2px 6px; border-radius:4px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--success); }
 
+.manage-panel { display:none; background:var(--panel); border-bottom:1px solid var(--border); padding:12px 20px; max-width:860px; margin:0 auto; }
+.manage-panel.open { display:block; }
+.manage-panel-title { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--accent); letter-spacing:.12em; text-transform:uppercase; margin-bottom:10px; }
+.manage-item { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid #1a1a28; }
+.manage-item:last-child { border-bottom:none; }
+.manage-item-name { flex:1; font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.manage-item-name.hidden { color:var(--dim); text-decoration:line-through; }
+.toggle-btn { font-family:'JetBrains Mono',monospace; font-size:10px; padding:3px 10px; border-radius:4px; cursor:pointer; border:1px solid var(--border); background:var(--entry); color:var(--text); transition:all .15s; }
+.toggle-btn.visible { border-color:var(--success); color:var(--success); }
+.toggle-btn.hidden { border-color:var(--dim); color:var(--dim); }
+
 @media (max-width:600px) {
   .header { padding:12px 14px; }
   .library { padding:12px 14px; }
@@ -106,12 +117,18 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
     <div class="header-sub" id="folder-name">Podcast EEA Certif 2026</div>
   </div>
   <div class="header-right" id="header-info">Chargement…</div>
+  <button onclick="toggleManagePanel()" style="margin-left:12px; font-family:'JetBrains Mono',monospace; font-size:11px; background:var(--entry); border:1px solid var(--border); color:var(--dim); border-radius:6px; padding:5px 12px; cursor:pointer;">👁 Gérer</button>
 </div>
 
 <div class="search-bar">
   <input class="search-input" type="text" id="search-input"
          placeholder="🔍  Rechercher un podcast…"
          oninput="filterTracks()">
+</div>
+
+<div class="manage-panel" id="manage-panel">
+  <div class="manage-panel-title">Gérer l'affichage des podcasts</div>
+  <div id="manage-list"></div>
 </div>
 
 <div class="library">
@@ -163,9 +180,49 @@ body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); 
 // ═══════════════════════════════════════════════════════
 const INDEX_FILE_ID = "1EYJ6Jq3VAny05aqR-CP5CZ3e_cjiOfCl";
 const API_KEY       = "AIzaSyCuf2U91tVBOopujlfwWuFNnc7b8VVI_uI";
+const HIDDEN_KEY    = "mansa_hidden_tracks";
 
 function driveJson(id) {
   return `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${API_KEY}`;
+}
+
+// ── Gestion des podcasts masqués ──────────────────────────────
+function getHidden() {
+  return JSON.parse(localStorage.getItem(HIDDEN_KEY)||"[]");
+}
+function isHidden(id) { return getHidden().includes(id); }
+function toggleHidden(id) {
+  const h = getHidden();
+  const i = h.indexOf(id);
+  if (i===-1) h.push(id); else h.splice(i,1);
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify(h));
+}
+function toggleManagePanel() {
+  const p = document.getElementById("manage-panel");
+  p.classList.toggle("open");
+  if (p.classList.contains("open")) renderManagePanel();
+}
+function renderManagePanel() {
+  const list = document.getElementById("manage-list");
+  if (!tracks.length) {
+    list.innerHTML=`<div style="font-size:12px;color:var(--dim)">Aucun podcast.</div>`;
+    return;
+  }
+  list.innerHTML = tracks.map(t => {
+    const h = isHidden(t.id);
+    return `<div class="manage-item">
+      <span class="manage-item-name ${h?'hidden':''}">${esc(t.title)}</span>
+      <button class="toggle-btn ${h?'hidden':'visible'}"
+              onclick="toggleTrackVisibility('${t.id}')">
+        ${h?'👁 Afficher':'🚫 Masquer'}
+      </button></div>`;
+  }).join("");
+}
+function toggleTrackVisibility(id) {
+  toggleHidden(id);
+  renderManagePanel();
+  filterTracks();
+}
 }
 function driveAudio(id) {
   return `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${API_KEY}`;
@@ -198,6 +255,22 @@ function saveProgress(id, time) {
 function getProgress(id) {
   const d = JSON.parse(localStorage.getItem(STORAGE)||"{}");
   return d[id]?.time || 0;
+}
+
+// ── Podcasts masqués ──────────────────────────────────
+const HIDDEN_KEY = "mansa_hidden";
+function getHidden() {
+  return JSON.parse(localStorage.getItem(HIDDEN_KEY)||"[]");
+}
+function setHidden(arr) {
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify(arr));
+}
+function isHidden(id) { return getHidden().includes(id); }
+function toggleHidden(id) {
+  const h = getHidden();
+  const i = h.indexOf(id);
+  if (i === -1) h.push(id); else h.splice(i,1);
+  setHidden(h);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -271,9 +344,47 @@ async function loadLibrary() {
 }
 
 // ═══════════════════════════════════════════════════════
+//  GESTION AFFICHAGE — masquer/afficher podcasts
+// ═══════════════════════════════════════════════════════
+function toggleManagePanel() {
+  const panel = document.getElementById("manage-panel");
+  const isOpen = panel.classList.toggle("open");
+  if (isOpen) renderManageList();
+}
+
+function renderManageList() {
+  const list = document.getElementById("manage-list");
+  if (!tracks.length) {
+    list.innerHTML = `<div style="font-size:12px;color:var(--dim);padding:8px 0;">Aucun podcast chargé.</div>`;
+    return;
+  }
+  list.innerHTML = tracks.map(t => {
+    const hidden = isHidden(t.id);
+    return `
+    <div class="manage-item">
+      <div class="manage-item-name ${hidden?'hidden':''}">${esc(t.title)}</div>
+      <button class="toggle-btn ${hidden?'hidden':'visible'}"
+              onclick="toggleTrackVisibility('${t.id}')">
+        ${hidden ? '👁 Afficher' : '🚫 Masquer'}
+      </button>
+    </div>`;
+  }).join("");
+}
+
+function toggleTrackVisibility(id) {
+  toggleHidden(id);
+  renderManageList();
+  const q = document.getElementById("search-input").value.toLowerCase().trim();
+  const visible = tracks.filter(t => !isHidden(t.id));
+  renderLibrary(q ? visible.filter(t=>t.title.toLowerCase().includes(q)) : visible);
+}
+
+// ═══════════════════════════════════════════════════════
 //  RENDU
 // ═══════════════════════════════════════════════════════
 function renderLibrary(list) {
+  // Filtre les podcasts masqués
+  list = list.filter(t => !isHidden(t.id));
   const container = document.getElementById("track-list");
   if (!list.length) {
     container.innerHTML = `<div class="loading">Aucun podcast trouvé.</div>`;
@@ -284,6 +395,33 @@ function renderLibrary(list) {
     const pct     = track.duration > 0
       ? Math.round((saved/track.duration)*100) : 0;
     const hasResume = saved > 5;
+
+    // Génère les chapitres (avec sous-chapitres si présents)
+    const chaptersHtml = track.chapters.length > 0 ? `
+    <div class="chapters-panel" id="chapters-${track.id}">
+      <div class="chapters-title">Chapitres</div>
+      ${track.chapters.map((ch,ci) => {
+        const hasSub = ch.sub && ch.sub.length > 0;
+        return `
+        <div class="chapter-item ${hasSub?'has-sub':''}"
+             id="ch-${track.id}-${ci}"
+             onclick="event.stopPropagation();playChapter('${track.id}',${ci})">
+          <div class="chapter-num">${String(ci+1).padStart(2,"0")}</div>
+          <div class="chapter-dot"></div>
+          <div class="chapter-title">${esc(ch.title)}</div>
+          <div class="chapter-time">${fmt(ch.start)}</div>
+        </div>
+        ${hasSub ? ch.sub.map((sub,si) => `
+        <div class="chapter-item sub-chapter"
+             onclick="event.stopPropagation();seekToTime(${sub.start})">
+          <div class="chapter-num" style="color:var(--dim);font-size:9px;">└</div>
+          <div class="chapter-dot" style="width:4px;height:4px;background:var(--dim)"></div>
+          <div class="chapter-title" style="font-size:11px;color:var(--dim)">${esc(sub.title)}</div>
+          <div class="chapter-time">${fmt(sub.start)}</div>
+        </div>`).join("") : ""}`;
+      }).join("")}
+    </div>` : "";
+
     return `
     <div class="track-card" id="card-${track.id}"
          onclick="selectTrack('${track.id}')">
@@ -308,18 +446,7 @@ function renderLibrary(list) {
                 onclick="event.stopPropagation();toggleChapters('${track.id}')">📋
         </button>`:""}
       </div>
-      ${track.chapters.length>0?`
-      <div class="chapters-panel" id="chapters-${track.id}">
-        <div class="chapters-title">Chapitres</div>
-        ${track.chapters.map((ch,ci)=>`
-          <div class="chapter-item" id="ch-${track.id}-${ci}"
-               onclick="event.stopPropagation();playChapter('${track.id}',${ci})">
-            <div class="chapter-num">${String(ci+1).padStart(2,"0")}</div>
-            <div class="chapter-dot"></div>
-            <div class="chapter-title">${esc(ch.title)}</div>
-            <div class="chapter-time">${fmt(ch.start)}</div>
-          </div>`).join("")}
-      </div>`:""}
+      ${chaptersHtml}
     </div>`;
   }).join("");
 }
@@ -373,6 +500,11 @@ function playChapter(id, ci) {
 function togglePlay() {
   if (!currentTrack) return;
   audio.paused ? audio.play() : audio.pause();
+}
+
+function seekToTime(t) {
+  audio.currentTime = t;
+  if (audio.paused) audio.play();
 }
 
 function seek(s) {
@@ -563,9 +695,16 @@ function updateActiveChapter() {
 // ═══════════════════════════════════════════════════════
 //  RECHERCHE
 // ═══════════════════════════════════════════════════════
+function seekToTime(seconds) {
+  audio.currentTime = seconds;
+  if (audio.paused) audio.play();
+}
+
 function filterTracks() {
   const q = document.getElementById("search-input").value.toLowerCase().trim();
-  renderLibrary(q ? tracks.filter(t=>t.title.toLowerCase().includes(q)) : tracks);
+  let list = tracks.filter(t => !isHidden(t.id));
+  if (q) list = list.filter(t => t.title.toLowerCase().includes(q));
+  renderLibrary(list);
 }
 
 // ═══════════════════════════════════════════════════════
