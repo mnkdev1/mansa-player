@@ -85,7 +85,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
 
 /* Player bar */
 .player-bar{position:fixed;bottom:0;left:0;right:0;background:#0a0a12;border-top:1px solid var(--border);z-index:200;padding:8px 18px 14px}
-.now-playing{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.now-playing{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);margin-bottom:6px;white-space:normal;overflow:hidden;line-height:1.4;min-height:14px}
 .now-playing span{color:var(--accent)}
 .controls{display:flex;align-items:center;gap:8px}
 .ctrl{background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:18px;padding:4px;transition:color .15s,transform .1s;flex-shrink:0}
@@ -95,9 +95,16 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
 .ctrl.sm{font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--entry);border:1px solid var(--border);color:var(--dim);border-radius:4px;padding:3px 7px;cursor:pointer;flex-shrink:0;transition:all .15s}
 .ctrl.sm:hover{border-color:var(--accent);color:var(--text)}
 .prog-wrap{flex:1}
-.prog-track{width:100%;height:4px;background:var(--entry);border-radius:3px;cursor:pointer;position:relative;overflow:hidden;margin-bottom:3px}
-.prog-fill{height:100%;background:var(--accent);border-radius:3px;pointer-events:none;transition:width .1s linear}
-.loop-zone{position:absolute;top:0;bottom:0;background:rgba(124,111,255,.25);pointer-events:none;border-left:2px solid var(--accent);border-right:2px solid var(--accent)}
+.prog-track{width:100%;height:6px;background:var(--entry);border-radius:4px;cursor:pointer;position:relative;overflow:visible;margin-bottom:3px;touch-action:none}
+.prog-track::before{content:'';position:absolute;top:-8px;bottom:-8px;left:0;right:0;}
+.prog-fill{height:100%;background:var(--accent);border-radius:3px;pointer-events:none;transition:width .1s linear;position:relative}
+.prog-fill::after{content:'';position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:12px;height:12px;border-radius:50%;background:var(--accent);opacity:0;transition:opacity .15s;pointer-events:none}
+.prog-track:hover .prog-fill::after{opacity:1}
+.loop-zone{position:absolute;top:0;bottom:0;background:rgba(124,111,255,.2);pointer-events:none;border:none}
+.loop-handle{position:absolute;top:50%;transform:translateY(-50%);width:14px;height:22px;border-radius:4px;background:var(--accent);cursor:ew-resize;display:none;z-index:10;touch-action:none;box-shadow:0 0 6px rgba(124,111,255,.8)}
+.loop-handle::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:10px;background:rgba(255,255,255,.6);border-radius:2px}
+#loop-handle-a{border-radius:4px 0 0 4px}
+#loop-handle-b{border-radius:0 4px 4px 0}
 .ch-markers{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none}
 .ch-marker{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,255,255,.2)}
 .time-row{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim)}
@@ -180,6 +187,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
     <div class="prog-track" id="prog-track" onclick="seekTo(event)">
       <div class="prog-fill" id="prog-fill" style="width:0%"></div>
       <div class="loop-zone" id="loop-zone" style="display:none"></div>
+      <div id="loop-handle-a" class="loop-handle"></div>
+      <div id="loop-handle-b" class="loop-handle"></div>
       <div class="ch-markers" id="ch-markers"></div>
     </div>
     <div class="time-row">
@@ -284,6 +293,7 @@ const audio = document.getElementById("audio");
 // ── Storage ───────────────────────────────────────────
 const SK = "mansa_progress";
 const HK = "mansa_hidden";
+const LK = "mansa_last";  // dernier podcast écouté
 
 function saveProgress(id, t) {
   const d = JSON.parse(localStorage.getItem(SK)||"{}");
@@ -292,6 +302,12 @@ function saveProgress(id, t) {
 }
 function getProgress(id) {
   return (JSON.parse(localStorage.getItem(SK)||"{}"))[id]?.time || 0;
+}
+function saveLastTrack(id) {
+  localStorage.setItem(LK, id);
+}
+function getLastTrack() {
+  return localStorage.getItem(LK);
 }
 function getHidden() {
   return JSON.parse(localStorage.getItem(HK)||"[]");
@@ -371,6 +387,35 @@ async function loadLibrary() {
     renderLibrary(visible);
     document.getElementById("header-info").textContent =
       `${tracks.length} podcast${tracks.length>1?"s":""} · ${data.updated||""}`;
+
+    // ── Reprise automatique du dernier podcast ──────────────────────────
+    const lastId = getLastTrack();
+    if (lastId) {
+      const lastTrack = tracks.find(t => t.id === lastId);
+      if (lastTrack) {
+        const savedTime = getProgress(lastId);
+        if (savedTime > 5) {
+          // Sélectionne sans lancer la lecture automatique
+          currentTrack = lastTrack;
+          chapters     = lastTrack.chapters||[];
+          audio.src    = lastTrack.mp3_url;
+          audio.load();
+          audio.addEventListener("loadedmetadata", () => {
+            audio.currentTime = savedTime;
+          }, {once: true});
+          document.getElementById("now-playing").innerHTML =
+            `⏸ <span>${esc(lastTrack.title)}</span> ` +
+            `<span style="color:var(--dim);font-size:9px">` +
+            `↩ reprend à ${fmt(savedTime)}</span>`;
+          // Highlight la carte
+          document.querySelectorAll(".track-card")
+            .forEach(c => c.classList.remove("active"));
+          document.getElementById(`card-${lastId}`)
+            ?.classList.add("active");
+          updateMediaSession(lastTrack);
+        }
+      }
+    }
   } catch(e) {
     el.innerHTML = `<div class="setup-box">
       <h3>❌ Erreur de chargement</h3>
@@ -459,11 +504,13 @@ function selectTrack(id) {
   chapters = track.chapters||[];
   audio.src = track.mp3_url;
   audio.load();
+  saveLastTrack(track.id);  // ← mémorise le dernier podcast
   const saved = getProgress(id);
   if (saved>5) audio.addEventListener("loadedmetadata",()=>{audio.currentTime=saved;},{once:true});
   document.getElementById("now-playing").innerHTML = `🎧 <span>${esc(track.title)}</span>`;
   resetLoop();
   renderChMarkers();
+  updateMediaSession(track);  // ← Media Session Android/iOS
   audio.play().catch(console.warn);
 }
 
@@ -491,6 +538,24 @@ function seekTo(e) {
   const r = document.getElementById("prog-track").getBoundingClientRect();
   audio.currentTime = ((e.clientX-r.left)/r.width)*(audio.duration||0);
 }
+
+// ── Drag sur la barre de progression ─────────────────
+let isDragging = false;
+const progTrack = document.getElementById("prog-track");
+
+function getSeekTime(e) {
+  const r   = progTrack.getBoundingClientRect();
+  const x   = (e.touches ? e.touches[0].clientX : e.clientX);
+  const pct = Math.max(0, Math.min(1, (x - r.left) / r.width));
+  return pct * (audio.duration || 0);
+}
+
+progTrack.addEventListener("mousedown",  e => { isDragging=true; audio.currentTime=getSeekTime(e); });
+progTrack.addEventListener("touchstart", e => { isDragging=true; audio.currentTime=getSeekTime(e); }, {passive:true});
+document.addEventListener("mousemove",   e => { if(isDragging) audio.currentTime=getSeekTime(e); });
+document.addEventListener("touchmove",   e => { if(isDragging) audio.currentTime=getSeekTime(e); }, {passive:true});
+document.addEventListener("mouseup",     () => { isDragging=false; });
+document.addEventListener("touchend",    () => { isDragging=false; });
 function skipChapter(dir) {
   if (!chapters.length) { seek(dir*30); return; }
   const cur = audio.currentTime;
@@ -518,6 +583,8 @@ function resetLoop() {
   loopA=null; loopB=null; loopActive=false;
   ["btn-a","btn-b","btn-loop"].forEach(id=>document.getElementById(id)?.classList.remove("set","active"));
   const lz=document.getElementById("loop-zone"); if(lz) lz.style.display="none";
+  const ha=document.getElementById("loop-handle-a"); if(ha) ha.style.display="none";
+  const hb=document.getElementById("loop-handle-b"); if(hb) hb.style.display="none";
   const li=document.getElementById("loop-info"); if(li) li.textContent="";
 }
 function updateLoopInfo() {
@@ -530,13 +597,80 @@ function updateLoopInfo() {
   else el.textContent="";
 }
 function updateLoopZone() {
-  const z=document.getElementById("loop-zone"); if(!z) return;
-  if(loopA===null||loopB===null||!audio.duration){z.style.display="none";return;}
-  const a=Math.min(loopA,loopB),b=Math.max(loopA,loopB),dur=audio.duration;
-  z.style.display="block";
-  z.style.left=(a/dur*100)+"%";
-  z.style.width=((b-a)/dur*100)+"%";
+  const z  = document.getElementById("loop-zone");
+  const ha = document.getElementById("loop-handle-a");
+  const hb = document.getElementById("loop-handle-b");
+  if (!z) return;
+
+  if (loopA===null && loopB===null) {
+    z.style.display="none";
+    if(ha) ha.style.display="none";
+    if(hb) hb.style.display="none";
+    return;
+  }
+
+  const dur = audio.duration;
+  if (!dur) return;
+
+  // Affiche poignée A seule si B pas encore défini
+  if (loopA !== null && ha) {
+    const pctA = (Math.min(loopA,dur)/dur*100);
+    ha.style.display = "block";
+    ha.style.left    = `calc(${pctA}% - 7px)`;
+  }
+  if (loopB !== null && hb) {
+    const pctB = (Math.min(loopB,dur)/dur*100);
+    hb.style.display = "block";
+    hb.style.left    = `calc(${pctB}% - 7px)`;
+  }
+
+  if (loopA===null || loopB===null) {
+    z.style.display = "none";
+    return;
+  }
+
+  const a   = Math.min(loopA,loopB);
+  const b   = Math.max(loopA,loopB);
+  z.style.display = "block";
+  z.style.left    = (a/dur*100)+"%";
+  z.style.width   = ((b-a)/dur*100)+"%";
+  z.style.background = loopActive
+    ? "rgba(61,217,164,.15)"
+    : "rgba(124,111,255,.2)";
+  z.style.borderLeft  = `2px solid ${loopActive?"var(--success)":"var(--accent)"}`;
+  z.style.borderRight = `2px solid ${loopActive?"var(--success)":"var(--accent)"}`;
 }
+
+// ── Drag des poignées A et B ──────────────────────────
+let draggingHandle = null;
+
+function initHandleDrag(handleEl, isA) {
+  function onMove(e) {
+    if (draggingHandle !== handleEl) return;
+    const r   = document.getElementById("prog-track").getBoundingClientRect();
+    const x   = e.touches ? e.touches[0].clientX : e.clientX;
+    const pct = Math.max(0, Math.min(1, (x-r.left)/r.width));
+    const t   = pct * (audio.duration||0);
+    if (isA) loopA = t; else loopB = t;
+    updateLoopZone();
+    updateLoopInfo();
+  }
+  function onUp() {
+    if (draggingHandle === handleEl) draggingHandle = null;
+  }
+  handleEl.addEventListener("mousedown",  e => { e.stopPropagation(); draggingHandle=handleEl; });
+  handleEl.addEventListener("touchstart", e => { e.stopPropagation(); draggingHandle=handleEl; }, {passive:true});
+  document.addEventListener("mousemove",  onMove);
+  document.addEventListener("touchmove",  onMove, {passive:true});
+  document.addEventListener("mouseup",    onUp);
+  document.addEventListener("touchend",   onUp);
+}
+
+// Init poignées après chargement DOM
+const _ha = document.getElementById("loop-handle-a");
+const _hb = document.getElementById("loop-handle-b");
+if (_ha) initHandleDrag(_ha, true);
+if (_hb) initHandleDrag(_hb, false);
 
 // ── Chapters UI ───────────────────────────────────────
 function toggleChapters(id) {
@@ -563,10 +697,11 @@ function renderChMarkers() {
 }
 function updateActiveChapter() {
   if(!currentTrack||!chapters.length) return;
-  const cur=audio.currentTime;
-  const rev=[...chapters].reverse();
-  const ai=rev.findIndex(c=>c.start<=cur);
-  const idx=ai===-1?0:chapters.length-1-ai;
+  const cur = audio.currentTime;
+  const rev  = [...chapters].reverse();
+  const ai   = rev.findIndex(c=>c.start<=cur);
+  const idx  = ai===-1 ? 0 : chapters.length-1-ai;
+
   chapters.forEach((_,ci)=>{
     const el=document.getElementById(`ch-${currentTrack.id}-${ci}`);
     if(!el) return;
@@ -574,6 +709,37 @@ function updateActiveChapter() {
     if(ci===idx) el.classList.add("active");
     if(ci<idx)   el.classList.add("done");
   });
+
+  // Affiche chapitre + sous-chapitre dans la barre du lecteur
+  const ch = chapters[idx];
+  if (!ch) return;
+
+  // Trouve le sous-chapitre actif
+  let activeSub = null;
+  if (ch.sub && ch.sub.length > 0) {
+    const revSub = [...ch.sub].reverse();
+    const si     = revSub.findIndex(s => s.start <= cur);
+    if (si !== -1) activeSub = revSub[si];
+  }
+
+  const np = document.getElementById("now-playing");
+  if (!np) return;
+
+  const chNum   = String(idx+1).padStart(2,"0");
+  const chTitle = esc(ch.title);
+  const subHtml = activeSub
+    ? `<span style="display:block;font-size:9px;color:var(--dim);
+        font-style:italic;margin-top:1px;white-space:nowrap;
+        overflow:hidden;text-overflow:ellipsis">
+        └ ${esc(activeSub.title)}</span>`
+    : "";
+
+  np.innerHTML = `
+    <span style="color:var(--accent);font-family:'JetBrains Mono',monospace;
+      font-size:9px">${chNum}</span>
+    <span style="margin:0 5px;color:var(--dim)">—</span>
+    <span style="font-size:12px;font-weight:500">${chTitle}</span>
+    <span style="display:block;${subHtml ? '' : 'display:none'}">${subHtml}</span>`;
 }
 
 // ── Audio events ──────────────────────────────────────
@@ -594,6 +760,7 @@ audio.addEventListener("timeupdate",()=>{
   }
   updateActiveChapter();
   updateLoopZone();
+  updateMediaSessionPosition();
 });
 audio.addEventListener("play",()=>{
   document.getElementById("play-btn").textContent="⏸";
@@ -612,6 +779,46 @@ function fmt(s) {
 }
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ── Media Session API — contrôles écran de veille Android/iOS ────────────
+function updateMediaSession(track) {
+  if (!("mediaSession" in navigator)) return;
+
+  // Métadonnées du podcast
+  const artwork = [];
+  if (track.thumb_url) {
+    artwork.push({ src: track.thumb_url, sizes: "512x512", type: "image/png" });
+  }
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title:  track.title,
+    artist: "Mansa Podcaster",
+    album:  "Podcast EEA Certif 2026",
+    artwork: artwork
+  });
+
+  // Actions disponibles sur l'écran de veille
+  navigator.mediaSession.setActionHandler("play",          () => audio.play());
+  navigator.mediaSession.setActionHandler("pause",         () => audio.pause());
+  navigator.mediaSession.setActionHandler("previoustrack", () => skipChapter(-1));
+  navigator.mediaSession.setActionHandler("nexttrack",     () => skipChapter(1));
+  navigator.mediaSession.setActionHandler("seekbackward",  (d) => seek(-(d?.seekOffset||10)));
+  navigator.mediaSession.setActionHandler("seekforward",   (d) => seek(d?.seekOffset||10));
+  navigator.mediaSession.setActionHandler("seekto",        (d) => {
+    if (d.seekTime !== undefined) audio.currentTime = d.seekTime;
+  });
+}
+
+function updateMediaSessionPosition() {
+  if (!("mediaSession" in navigator)) return;
+  if (!audio.duration || isNaN(audio.duration)) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration:     audio.duration,
+      playbackRate: audio.playbackRate,
+      position:     audio.currentTime,
+    });
+  } catch(e) {}
 }
 
 // ── Init ──────────────────────────────────────────────
